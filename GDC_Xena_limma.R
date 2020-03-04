@@ -1,13 +1,15 @@
 rm(list=ls())
 options(stringsAsFactors = F)
+dir_Rdata <- 'c:/Users/jufei/Documents/TCGA/Rdata/'
+dir_Results <- 'c:/Users/jufei/Documents/TCGA/Results/'
 
 #提取GDC的临床数据
 if(F){
   library("XML")
   library("methods")
-  dir='c:/Users/jufei/Documents/TCGA/LIHC/XML/'
+  dir_XML='c:/Users/jufei/Documents/TCGA/LIHC/XML/'
   
-  all_fiels=list.files(path = dir ,pattern='*.xml$',recursive=T)
+  all_fiels=list.files(path = dir_XML ,pattern='*.xml$',recursive=T)
   all_fiels
   cl = lapply(all_fiels
               , function(x){
@@ -24,8 +26,8 @@ if(F){
   
 #提取GDC的TCGA数据并整理
 if(F){
-  dir='c:/Users/jufei/Documents/TCGA/LIHC/LIHC_TCGA'
-  mi = lapply(list.files(path = dir ,pattern='*.htseq.counts.gz$',recursive=T)
+  dir_GDC='c:/Users/jufei/Documents/TCGA/LIHC/LIHC_TCGA'
+  mi = lapply(list.files(path = dir_GDC ,pattern='*.htseq.counts.gz$',recursive=T)
               , function(x){
                 result <- read.table(file = file.path(dir,x),sep = '\t',header = F)[,1:2]
                 return( result )
@@ -66,14 +68,14 @@ if(F){
   mi_df <- (2^mi_df)-1
   names(mi_df) <- gsub('[.]','_',colnames(mi_df))
   save(mi_df,file = "LIHC_xena_TCGA_count_rowdata.Rdata")
-  
   expr <- mi_df[,ifelse(as.numeric(substr(colnames(mi_df),14,15)) < 10,T,F)]
-
 }
 
 #提取xena生存期数据
 if(F){
   survival_data <- read.table(file = "c:/Users/jufei/Documents/TCGA/LIHC/TCGA-LIHC.survival.tsv.gz",sep = '\t',header = T)
+  names(survival_data) <- gsub('[.]','_',colnames(survival_data))
+  survival_data$sample <- gsub('-','_',survival_data$sample)
 }
   
 load(file= 'LIHC_GDC_TCGA_rowdata.Rdata')
@@ -112,7 +114,7 @@ if(F){
   tumor_data <- as.data.frame(cbind(rownames(tumor_data),tumor_data))
   names(tumor_data)[1] <- "Gene_ID"
   tumor_data[1:4,1:4]
-  data_for_limma <- merge(normal_data,tumor_data,by = "Gene_ID")
+  data_for_limma <- merge(tumor_data,normal_data,by = "Gene_ID")
   
   rownames(data_for_limma) <- data_for_limma$Gene_ID
   data_for_limma <- as.matrix(data_for_limma[,-1])
@@ -213,6 +215,24 @@ if(F){
   rpk[1:4,1:4]
   tpm <- t(t(rpk)/colSums(rpk) * 1000000)
   save(tpm,file = "LIHC_TCGA_VS_GTEx_TPM.Rdata")
+  
+  load(file = paste0(dir_Rdata,'LIHC_TCGA_VS_GTEx_TPM.Rdata'))
+  
   log2tpm <- log2(tpm+1)
   head(tpm)
+}
+
+#添加病人OS信息与注释
+if(F){
+  annotation_gene <- read.table(file = paste0(dir_Rdata,'gencode.v22.annotation.gene.probeMap'),sep = '\t',header = T)
+  annotation_gene$id <- do.call(rbind,strsplit(as.character(annotation_gene$id),split = '[.]'))[,1]
+  rownames(annotation_gene) <- annotation_gene$id
+  temp <- as.data.frame(log2tpm)
+  temp <- t(cbind(annotation_gene[rownames(temp),2],temp))
+  rownames(temp)[1] <- 'Gene_name'
+  temp <- as.data.frame(cbind(rownames(temp),temp))
+  names(temp)[1] <- 'sample'
+  temp <- merge(survival_data,temp,by='sample',all.y = T)
+  temp[1:4,1:4]
+  write.csv(temp,file = paste0(dir_Results,'LIHC_Log2TPM.csv'),row.names = F)
 }
